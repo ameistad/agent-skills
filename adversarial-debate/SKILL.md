@@ -1,10 +1,6 @@
 ---
 name: adversarial-debate
-description: Simulates a structured debate with three personas to help make difficult decisions. Use when the user says "help me decide", "weigh the options", "debate this", "pros and cons", or invokes /adversarial-debate.
-license: MIT
-metadata:
-  author: ameistad
-  version: "1.0.0"
+description: Simulates a structured debate with three personas to help make difficult decisions. Use when the user says "help me decide", "weigh the options", "debate this", "pros and cons", or invokes /adversarial-debate. Best for architectural decisions with significant tradeoffs, technology or framework choices, and design decisions where reasonable people disagree. Skip for trivial decisions or when there's an obviously correct answer.
 ---
 
 # Adversarial Debate
@@ -68,12 +64,3 @@ Use clear headers for each speaker:
 **Jeff:** [verdict with reasoning]
 ```
 
-## When to Use This
-
-This technique is valuable for:
-- Architectural decisions with significant tradeoffs
-- Technology or framework choices
-- Design decisions where reasonable people disagree
-- Any decision where you want to stress-test your thinking
-
-Skip this for trivial decisions or when there's an obviously correct answer.

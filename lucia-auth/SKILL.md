@@ -1,10 +1,6 @@
 ---
 name: lucia-auth
 description: Implement authentication following Lucia Auth best practices. Use when users ask to "add auth", "implement authentication", "setup login", "add sessions", "implement OAuth", "add 2FA/MFA", "password hashing", or reference "lucia auth" or "copenhagen book" patterns.
-license: MIT
-metadata:
-  author: andreas
-  version: "1.0.0"
 ---
 
 # Lucia Auth

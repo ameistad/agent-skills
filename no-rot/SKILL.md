@@ -1,10 +1,6 @@
 ---
 name: no-rot
 description: Prevents brain atrophy from LLM over-reliance by leaving engaging challenges for the user to complete. Use when you want to stay sharp while coding with AI assistance. Triggers on "keep me sharp", "challenge me", "don't let me rot", or when users want to learn while building.
-license: MIT
-metadata:
-  author: andreas
-  version: "1.0.0"
 ---
 
 # No Rot
