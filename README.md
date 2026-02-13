@@ -28,6 +28,14 @@ Simulates a structured debate with three personas to help make difficult decisio
 npx skills add https://github.com/ameistad/agent-skills --skill adversarial-debate
 ```
 
+### [native-app-publish-ready](./native-app-publish-ready)
+
+Comprehensive app store submission readiness checker for mobile apps. Audits iOS App Store and Google Play Store requirements including build config, privacy compliance, store assets, metadata, technical requirements, and common rejection causes. Supports native iOS (Swift/ObjC), native Android (Kotlin/Java), Flutter, and React Native (including Expo) projects.
+
+```bash
+npx skills add https://github.com/ameistad/agent-skills --skill native-app-publish-ready
+```
+
 ## Creating Your Own Skills
 
 See [AGENTS.md](./AGENTS.md) for guidance on creating new skills.
