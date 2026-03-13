@@ -85,5 +85,6 @@ Items in this file are specific to Flutter projects and supplement the platform 
 3. **iOS permission descriptions**: Flutter plugins may request permissions but not add Info.plist descriptions. Check all plugin READMEs for required plist entries.
 4. **Android Gradle version mismatches**: Plugins may require specific Gradle or AGP versions. Check compatibility matrix.
 5. **Missing ProGuard rules**: Third-party native SDKs bundled via plugins may need ProGuard keep rules to avoid runtime crashes in release builds.
-6. **Platform-specific UI**: Test that platform-adaptive widgets render correctly on both iOS and Android.
-7. **Large app size**: Flutter apps have a minimum size overhead. Use `--analyze-size` flag to identify what's contributing to size.
+6. **Location plugin review issues**: Do not call `getCurrentPosition()` or similar APIs before requesting permission, and avoid prompting on app startup if location is only needed for specific features.
+7. **Platform-specific UI**: Test that platform-adaptive widgets render correctly on both iOS and Android.
+8. **Large app size**: Flutter apps have a minimum size overhead. Use `--analyze-size` flag to identify what's contributing to size.

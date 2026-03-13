@@ -12,12 +12,76 @@ Output: JSON report to stdout, status messages to stderr.
 """
 
 import json
-import os
 import sys
 import re
 import plistlib
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+VAGUE_PERMISSION_PHRASES = (
+    "needed for app to function",
+    "needed for the app to function",
+    "required for app to function",
+    "required for the app to function",
+    "needed for functionality",
+    "required for functionality",
+    "to function properly",
+    "for better experience",
+    "to improve your experience",
+    "for app features",
+)
+
+SKIP_PATH_SEGMENTS = ("Pods", "build", "DerivedData", "node_modules", ".dart_tool")
+
+
+def normalize_text(value: str) -> str:
+    """Collapse repeated whitespace for simpler checks and cleaner output."""
+    return " ".join(value.split())
+
+
+def get_vague_permission_phrase(value: str) -> str | None:
+    """Return the vague phrase that triggered, if any."""
+    normalized = normalize_text(value).lower()
+    for phrase in VAGUE_PERMISSION_PHRASES:
+        if phrase in normalized:
+            return phrase
+    return None
+
+
+def detect_subscription_signals(root: Path, swift_files: list[Path]) -> list[str]:
+    """Detect common iOS subscription/IAP integrations for review reminders."""
+    candidate_files = []
+    for path in (root / "pubspec.yaml", root / "package.json"):
+        if path.exists():
+            candidate_files.append(path)
+
+    objective_c_files = list(root.glob("**/*.m")) + list(root.glob("**/*.mm"))
+    filtered_objective_c = [
+        path for path in objective_c_files
+        if not any(segment in str(path) for segment in SKIP_PATH_SEGMENTS)
+    ]
+    candidate_files.extend(swift_files[:200])
+    candidate_files.extend(filtered_objective_c[:100])
+
+    patterns = {
+        "StoreKit": r"\bStoreKit\b|SKProduct|SubscriptionStoreView|Product\.SubscriptionInfo",
+        "RevenueCat": r"\bRevenueCat\b|purchases_flutter|react-native-purchases|com\.revenuecat",
+        "Flutter in_app_purchase": r"\bin_app_purchase\b|\bstore_kit_wrappers\b",
+        "React Native IAP": r"\breact-native-iap\b|\bexpo-in-app-purchases\b",
+    }
+
+    detected = set()
+    for path in candidate_files:
+        try:
+            content = path.read_text(errors="ignore")
+        except OSError:
+            continue
+
+        for label, pattern in patterns.items():
+            if re.search(pattern, content):
+                detected.add(label)
+
+    return sorted(detected)
 
 
 def detect_project_type(root: Path) -> dict:
@@ -128,6 +192,9 @@ def check_ios(root: Path, framework: str) -> list[dict]:
     def ok(category, message):
         issues.append({"platform": "ios", "category": category, "message": message, "severity": "pass"})
 
+    swift_files = list(root.glob("**/*.swift"))
+    swift_files = [f for f in swift_files if not any(segment in str(f) for segment in SKIP_PATH_SEGMENTS)]
+
     # Info.plist
     plist_path = find_info_plist(root)
     if plist_path:
@@ -175,15 +242,36 @@ def check_ios(root: Path, framework: str) -> list[dict]:
                 "NSUserTrackingUsageDescription": "Tracking (ATT)",
             }
             found_permissions = []
+            location_permission_keys = {
+                "NSLocationWhenInUseUsageDescription",
+                "NSLocationAlwaysAndWhenInUseUsageDescription",
+            }
+            location_permission_detected = False
             for key, name in permission_keys.items():
                 val = plist.get(key)
                 if val:
-                    if len(val.strip()) < 10:
-                        warn("privacy", f"{name} permission description is very short: \"{val}\". Apple may reject vague descriptions.")
-                    else:
-                        found_permissions.append(name)
+                    found_permissions.append(name)
+                    normalized_val = normalize_text(str(val))
+                    if key in location_permission_keys:
+                        location_permission_detected = True
+
+                    if len(normalized_val) < 10:
+                        warn("privacy", f"{name} permission description is very short: \"{normalized_val}\". Apple may reject vague descriptions.")
+                        continue
+
+                    vague_phrase = get_vague_permission_phrase(normalized_val)
+                    if vague_phrase:
+                        warn(
+                            "privacy",
+                            f"{name} permission description looks vague: \"{normalized_val}\". State the exact feature and data use instead of generic wording like \"{vague_phrase}\".",
+                        )
             if found_permissions:
                 ok("privacy", f"Permission descriptions found for: {', '.join(found_permissions)}")
+            if location_permission_detected:
+                warn(
+                    "privacy",
+                    "Location permission detected. Manually verify the app requests permission before any location access and only when the user enters a location-based feature.",
+                )
 
             # Check ATS
             ats = plist.get("NSAppTransportSecurity", {})
@@ -227,9 +315,15 @@ def check_ios(root: Path, framework: str) -> list[dict]:
     else:
         error("assets", "AppIcon.appiconset not found")
 
+    subscription_signals = detect_subscription_signals(root, swift_files)
+    if subscription_signals:
+        warn(
+            "metadata",
+            "Subscription/IAP signals detected "
+            f"({', '.join(subscription_signals)}). If the iOS app offers subscriptions, link Apple's standard EULA in the App Store description and inside the app.",
+        )
+
     # Hardcoded secrets check (basic)
-    swift_files = list(root.glob("**/*.swift"))
-    swift_files = [f for f in swift_files if "Pods" not in str(f) and "build" not in str(f)]
     secret_patterns = [
         (r'(?i)(api[_-]?key|secret[_-]?key|password)\s*[:=]\s*"[^"]{8,}"', "Possible hardcoded API key/secret"),
         (r'sk[-_](?:live|test)_[a-zA-Z0-9]{20,}', "Possible Stripe secret key"),

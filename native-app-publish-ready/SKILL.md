@@ -1,6 +1,6 @@
 ---
 name: native-app-publish-ready
-description: Comprehensive app store submission readiness checker for mobile apps. Audits iOS App Store and Google Play Store requirements including build config, privacy compliance, store assets, metadata, technical requirements, and common rejection causes. Use when the user asks to "check if my app is ready to submit", "review for app store", "app store checklist", "pre-submission check", "ready for Play Store", "ready for App Store", "submission readiness", or wants to audit a mobile app before publishing. Supports native iOS (Swift/ObjC), native Android (Kotlin/Java), Flutter, and React Native (including Expo) projects.
+description: Comprehensive app store submission readiness checker for mobile apps. Audits iOS App Store and Google Play Store requirements including build config, privacy compliance, store assets, metadata, technical requirements, and common rejection causes, including Apple review issues common in social/marketplace apps with UGC, chat, location, subscriptions, and accounts. Use when the user asks to "check if my app is ready to submit", "review for app store", "app store checklist", "pre-submission check", "ready for Play Store", "ready for App Store", "submission readiness", or wants to audit a mobile app before publishing. Supports native iOS (Swift/ObjC), native Android (Kotlin/Java), Flutter, and React Native (including Expo) projects.
 ---
 
 # App Store Readiness
@@ -38,6 +38,8 @@ Based on detected project type, read the relevant reference files for the full c
 
 Each reference file contains a complete checklist organized by category. Use these to supplement the automated scan with manual review items.
 
+For iOS apps with UGC, chat, location features, subscriptions, or user accounts, pay extra attention to the `Privacy and Permissions`, `Metadata and Compliance`, `App Review Preparation`, `Pre-Submission Testing`, and `Common Rejection Reasons` sections in `references/ios.md`.
+
 ### Step 3: Review Automated Results
 
 Present scanner results grouped by severity:
@@ -70,6 +72,16 @@ Walk through critical items that cannot be verified by scanning files alone:
 - ATT prompt before tracking (iOS)
 - Account deletion offered (required by both stores)
 - COPPA compliance if targeting children
+
+**iOS App Review Hotspots**
+- UGC, chat, or stranger-to-stranger interaction includes both report and block flows
+- Location usage strings explain the exact data use and feature purpose; avoid vague copy
+- Location permission is requested before any location access and only when the user reaches a location-based feature
+- Account deletion is fully initiated in-app with confirmation, not by email or support ticket
+- Subscription apps link Apple's standard EULA in the App Store description and inside the app
+- Age rating matches the actual social/chat/location surface area of the app
+- iPhone builds are tested on iPad compatibility mode and IPv6-only networking
+- Support URL is live and reviewer-accessible
 
 **App Review Preparation**
 - Demo account credentials ready (if login required)

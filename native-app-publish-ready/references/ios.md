@@ -61,6 +61,9 @@
   - NSLocalNetworkUsageDescription
   - (any others the app uses)
 - [ ] All usage descriptions are human-readable and explain WHY the permission is needed
+- [ ] Permission purpose strings are specific about what data is used, which feature it enables, and whether it is shared; avoid vague text such as "Location is needed for app to function"
+- [ ] If location is requested, the app asks for permission before any location lookup or `getLocation()`-style call
+- [ ] Location permission is requested only when a location-dependent feature is used, not automatically on app startup unless the core flow truly requires it
 - [ ] Privacy nutrition labels accurate in App Store Connect (data collection, data use, data linked to user)
 - [ ] ATT (App Tracking Transparency) prompt shown before any tracking (if applicable)
 - [ ] No tracking identifiers collected without ATT consent
@@ -89,12 +92,13 @@
 - [ ] Keywords (max 100 characters, comma-separated)
 - [ ] Promotional text (max 170 characters, can be updated without new build)
 - [ ] What's New text filled for updates
-- [ ] Support URL active and functional
+- [ ] Support URL active, functional, and reviewer-accessible
 - [ ] Marketing URL (optional)
 - [ ] Privacy policy URL (required for apps with accounts, subscriptions, or data collection)
+- [ ] If the app offers subscriptions, Apple's standard EULA is linked in both the App Store description and inside the app (Guideline 3.1.2(c))
 - [ ] Copyright information (e.g., "2025 Company Name")
 - [ ] Category and optional secondary category selected
-- [ ] Age rating questionnaire completed accurately
+- [ ] Age rating questionnaire completed accurately; UGC/chat/location apps involving strangers are often at least 12+
 - [ ] IDFA usage declared if applicable
 - [ ] Export compliance information completed (encryption usage)
 - [ ] Content rights declaration completed
@@ -113,6 +117,7 @@
 - [ ] Memory usage within acceptable limits (test with Instruments)
 - [ ] No excessive battery drain (test with Instruments Energy Log)
 - [ ] IPv6-only network compatibility verified
+- [ ] iPhone-only builds tested in iPad compatibility mode; universal apps tested with native iPad layouts
 - [ ] Handles interruptions gracefully (phone calls, notifications, backgrounding)
 - [ ] Correct behavior on all supported orientations
 - [ ] API keys and secrets not hardcoded in binary
@@ -139,12 +144,15 @@
 - [ ] Reviewer instructions for features requiring special setup
 - [ ] If using background modes, explain why in review notes
 - [ ] If using non-standard URL schemes, document them
+- [ ] If the app includes UGC, chat, or social interaction, both report and block flows are implemented and easy for reviewers to test
+- [ ] If the app has user accounts, account deletion is initiated programmatically in-app with a confirmation step; email or support-only flows are not sufficient
+- [ ] Demo account or review notes let Apple exercise moderation, deletion, subscription, and any other gated flows
 
 ## Pre-Submission Testing
 
 - [ ] Full regression test on latest iOS version
 - [ ] Test on oldest supported iOS version
-- [ ] Test on both iPhone and iPad (if universal)
+- [ ] Test on both iPhone and iPad; if the app is iPhone-only, confirm it still runs without crashing in iPad compatibility mode
 - [ ] All deep links and universal links verified
 - [ ] Push notifications tested end-to-end
 - [ ] All localizations verified (if supporting multiple languages)
@@ -155,13 +163,15 @@
 
 ## Common Rejection Reasons
 
-1. **Guideline 2.1 - App Completeness**: Crashes, broken links, placeholder content
-2. **Guideline 2.3 - Accurate Metadata**: Screenshots or description don't match app functionality
-3. **Guideline 4.0 - Design**: Non-standard UI that confuses users, webview-only apps
-4. **Guideline 5.1.1 - Data Collection**: Missing or inaccurate privacy labels
-5. **Guideline 5.1.2 - Data Use and Sharing**: Collecting data not disclosed
-6. **Guideline 3.1.1 - In-App Purchase**: Using external payment for digital goods
+1. **Guideline 1.2 - User-Generated Content**: UGC/chat/social apps need a block user feature, not only report
+2. **Guideline 2.1 - App Completeness**: Crashes, broken links, placeholder content
+3. **Guideline 2.3 - Accurate Metadata**: Screenshots or description don't match app functionality
+4. **Guideline 3.1.1 - In-App Purchase**: Using external payment for digital goods
+5. **Guideline 3.1.2(c) - Subscriptions**: Missing Apple's standard EULA link in the App Store description and inside the app
+6. **Guideline 4.0 - Design**: Non-standard UI that confuses users, webview-only apps
 7. **Guideline 4.2 - Minimum Functionality**: App is too simple or a repackaged website
-8. **Guideline 2.5.1 - Software Requirements**: Using private APIs
-9. **Guideline 5.1.1(v)**: Account deletion not offered (required since June 2022)
-10. **Missing purpose strings**: Permissions requested without Info.plist descriptions
+8. **Guideline 5.1.1 - Data Collection**: Missing or inaccurate privacy labels, vague permission strings, or unsupported deletion flows
+9. **Guideline 5.1.1(v)**: Account deletion is not offered programmatically in-app
+10. **Guideline 5.1.5 - Location Services**: Accessing location before prompting, asking too early in the flow, or using unclear purpose strings
+11. **Guideline 2.5.1 - Software Requirements**: Using private APIs
+12. **Missing purpose strings**: Permissions requested without Info.plist descriptions

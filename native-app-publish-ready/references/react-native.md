@@ -102,8 +102,9 @@ Items in this file are specific to React Native projects and supplement the plat
 1. **Hermes vs JSC differences**: Some JavaScript features behave differently on Hermes. Test release builds with Hermes enabled.
 2. **Native module version mismatches**: Upgrading React Native may break native modules. Check compatibility before upgrading.
 3. **iOS permission descriptions**: Native modules may request permissions but not add Info.plist descriptions automatically. Check each module's README.
-4. **Android 64-bit requirement**: Ensure all native modules include 64-bit libraries (arm64-v8a).
-5. **Large JS bundle**: Tree shaking is limited in Metro. Audit imports and use lazy loading for screens (React.lazy, dynamic imports).
-6. **Flipper in production**: Ensure Flipper and debugging tools are stripped from release builds.
-7. **Bridging overhead**: Excessive communication between JS and native threads causes jank. Batch operations and minimize bridge crossings (or migrate to New Architecture).
-8. **Expo SDK version**: EAS Build may fail if Expo SDK is outdated. Keep SDK version aligned with EAS CLI.
+4. **Location permission timing**: Do not call geolocation APIs before requesting permission, and avoid prompting on first launch if location is only needed for optional features.
+5. **Android 64-bit requirement**: Ensure all native modules include 64-bit libraries (arm64-v8a).
+6. **Large JS bundle**: Tree shaking is limited in Metro. Audit imports and use lazy loading for screens (React.lazy, dynamic imports).
+7. **Flipper in production**: Ensure Flipper and debugging tools are stripped from release builds.
+8. **Bridging overhead**: Excessive communication between JS and native threads causes jank. Batch operations and minimize bridge crossings (or migrate to New Architecture).
+9. **Expo SDK version**: EAS Build may fail if Expo SDK is outdated. Keep SDK version aligned with EAS CLI.
