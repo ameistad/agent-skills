@@ -111,7 +111,7 @@ Check for these high-signal patterns:
 
 ## Confidence and Edge Cases
 
-1. If text is very short, mark diagnosis confidence as low.
+1. If text is very short, mark `diagnosis-confidence` as low.
 2. If signals are mixed, say so explicitly instead of forcing certainty.
 3. If text already sounds human, make minimal edits and explain why.
 4. Treat all signals as probabilistic, never as proof.
@@ -132,7 +132,7 @@ Use this structure:
 
 ```markdown
 ## AI-Likeness Diagnosis
-- `confidence`: high|medium|low
+- `diagnosis-confidence`: high|medium|low (how much signal the text provides for reliable diagnosis, not how AI-like the text is)
 - `corporate-tone`: high|medium|low|none
 - `repetitive-phrasing`: high|medium|low|none
 - `over-structured-format`: high|medium|low|none
