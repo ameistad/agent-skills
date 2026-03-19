@@ -44,28 +44,54 @@ Check for these high-signal patterns:
 1. Overly friendly corporate tone
 - Excessive politeness, ingratiating language, or "trying too hard" to agree.
 
-2. Repetitive rhetorical templates
-- Patterns like "it's not X, it's Y" or "not because X, but because Y."
+2. Repetitive phrasing
+- Rhetorical templates like "it's not X, it's Y" or "not because X, but because Y."
+- Same transition words recycled throughout ("furthermore," "additionally," "moreover").
+- Predictable sentence structures repeated across paragraphs.
+- Restates the same idea in slightly different words across sentences or paragraphs instead of advancing the argument.
 
 3. Over-structured formatting
-- Unnecessary bullet lists, random bolding, emoji structure, and forced "sets of 3."
+- Defaults to bullet lists, numbered lists, and subheadings even when the topic doesn't require them. Prose would often work better.
+- Random bolding, emoji structure.
+- Compulsive rule of three: AI defaults to grouping everything in threes. Three bullet points, three examples, three adjectives, three takeaways. Once you notice it, it shows up everywhere. If the content naturally has two points or five, let it.
+- Overly perfect structure in every paragraph (topic sentence, support, conclusion).
 
 4. Too polished and too clean
 - Uniformly perfect grammar and cadence with no natural variation.
 
 5. Verbose but shallow
 - Long text with little concrete detail, examples, or direct answers.
- - Message is longer than needed for the actual intent.
+- Message is longer than needed for the actual intent.
+- Surface-level analysis where deeper insight is expected. Restates the obvious instead of adding real understanding.
 
 6. Vocabulary-intent mismatch
 - Uses elevated or keywordy words where plain language would fit better.
 - Word choice feels unnatural for the sentence complexity or context.
 
-7. Generic balanced low-stakes voice
+7. Lack of personality
 - Sounds like checklist compliance instead of lived perspective.
+- No personal stories, anecdotes, or first-hand experience when the context calls for it.
+- Avoids taking a clear or nuanced position. Hedges everything into safe, balanced non-opinions.
 
-8. Signature habits
-- Em-dash overuse, "Would you like me to..." endings, and keywordy vocabulary such as "delve" and "intricate."
+8. Contextual errors
+- Factual inaccuracies, wrong details, or misattributed references that a knowledgeable human wouldn't make.
+- Sudden, unexplained shifts in topic or register mid-text.
+
+9. Hollow intensifiers and filler phrases
+- Empty emphasis words: "truly," "incredibly," "absolutely," "fundamentally," "remarkably."
+- Throat-clearing filler: "it's worth noting that," "it's important to mention," "at the end of the day."
+- These add word count without adding meaning.
+
+10. Formulaic openings and closings
+- Grand scene-setting intros: "In today's fast-paced world," "In an era of," "As we navigate."
+- Tidy wrap-up endings: "In conclusion," "By following these steps," "Ultimately, the key takeaway is."
+- Real writing starts closer to the point and ends when it's done.
+
+11. Signature habits
+- Em-dash overuse, "Would you like me to..." endings.
+- AI go-to vocabulary: words that aren't wrong but AI reaches for them disproportionately as defaults. Flag when they cluster or appear where a simpler word would do: leverage, empower, facilitate, enable, enhance, drive, harness, showcase, incorporate, integrate, seamless, pivotal, navigate, delve, underscore, amplify, elevate, intricate, foster, robust, streamline, comprehensive, cutting-edge, revolutionize.
+- Any single occurrence is fine. The signal is density: multiple go-to words in a short span.
+- For non-English text: the word list above is English-specific, but the pattern applies in every language. Watch for words that feel formal, polished, or elevated beyond what a native speaker would naturally choose in the same context. Flag vocabulary that reads like a thesaurus substitution rather than the writer's own word.
 
 ## Rewrite Rules
 
@@ -75,7 +101,7 @@ Check for these high-signal patterns:
 4. Prefer plain words for simple messages; reserve advanced vocabulary for real technical precision.
 5. Keep vocabulary level consistent with message complexity and audience.
 6. Keep formatting minimal unless the context truly benefits from structure.
-7. Vary sentence length and rhythm slightly; avoid robotic consistency.
+7. Vary sentence and paragraph length; avoid uniform blocks of text.
 8. Match the user's context and audience, not a generic assistant voice.
 9. Remove performative neutrality when the task needs a clear stance.
 10. Amplify the author's existing voice when signal exists (cadence, directness, warmth, vocabulary) without creating a new persona.
@@ -108,12 +134,15 @@ Use this structure:
 ## AI-Likeness Diagnosis
 - `confidence`: high|medium|low
 - `corporate-tone`: high|medium|low|none
-- `template-phrasing`: high|medium|low|none
+- `repetitive-phrasing`: high|medium|low|none
 - `over-structured-format`: high|medium|low|none
 - `too-polished`: high|medium|low|none
 - `verbose-shallow`: high|medium|low|none
 - `vocabulary-intent-mismatch`: high|medium|low|none
-- `generic-balanced-voice`: high|medium|low|none
+- `lack-of-personality`: high|medium|low|none
+- `contextual-errors`: high|medium|low|none
+- `hollow-intensifiers`: high|medium|low|none
+- `formulaic-openings-closings`: high|medium|low|none
 - `signature-habits`: high|medium|low|none
 
 ## Key Fixes Applied
