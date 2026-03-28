@@ -1,63 +1,23 @@
 /**
- * OAuth 2.0 Authorization Code Flow with PKCE
- * Based on Copenhagen Book: https://thecopenhagenbook.com/oauth
+ * OAuth 2.0 Authorization Code Flow with PKCE.
+ * Based on The Copenhagen Book:
+ * https://thecopenhagenbook.com/oauth
  *
- * Key security features:
- * - PKCE (Proof Key for Code Exchange) prevents authorization code interception
- * - State parameter prevents CSRF attacks
- * - All tokens stored in HttpOnly cookies
+ * Production defaults:
+ * - Authorization Code + PKCE
+ * - State validation
+ * - Safe same-origin post-auth redirects
+ * - Verified-email checks before account linking
  */
 
-/**
- * OAuth provider configuration.
- * Add your provider's endpoints here.
- */
 export interface OAuthProviderConfig {
   clientId: string;
-  clientSecret: string;
+  clientSecret?: string;
   authorizationEndpoint: string;
   tokenEndpoint: string;
   redirectUri: string;
   scopes: string[];
-}
-
-export const GITHUB_CONFIG: Partial<OAuthProviderConfig> = {
-  authorizationEndpoint: "https://github.com/login/oauth/authorize",
-  tokenEndpoint: "https://github.com/login/oauth/access_token",
-  scopes: ["read:user", "user:email"],
-};
-
-export const GOOGLE_CONFIG: Partial<OAuthProviderConfig> = {
-  authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
-  tokenEndpoint: "https://oauth2.googleapis.com/token",
-  scopes: ["openid", "email", "profile"],
-};
-
-/**
- * Generate a cryptographically secure random string.
- * Used for state and PKCE code verifier.
- * Returns a URL-safe base64 string with at least 112 bits of entropy.
- */
-function generateSecureToken(byteLength: number = 32): string {
-  const bytes = new Uint8Array(byteLength);
-  crypto.getRandomValues(bytes);
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "");
-}
-
-/**
- * Generate SHA-256 hash for PKCE code challenge.
- */
-async function sha256(plain: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(plain);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return btoa(String.fromCharCode(...new Uint8Array(hash)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "");
+  tokenEndpointAuthMethod?: "client_secret_basic" | "client_secret_post" | "none";
 }
 
 export interface AuthorizationRequest {
@@ -66,14 +26,141 @@ export interface AuthorizationRequest {
   codeVerifier: string;
 }
 
+export interface TokenResponse {
+  accessToken: string;
+  tokenType: string;
+  expiresIn?: number;
+  refreshToken?: string;
+  scope?: string;
+  idToken?: string;
+}
+
+export const GITHUB_CONFIG: Partial<OAuthProviderConfig> = {
+  authorizationEndpoint: "https://github.com/login/oauth/authorize",
+  tokenEndpoint: "https://github.com/login/oauth/access_token",
+  scopes: ["read:user", "user:email"],
+  tokenEndpointAuthMethod: "client_secret_post",
+};
+
+export const GOOGLE_CONFIG: Partial<OAuthProviderConfig> = {
+  authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+  tokenEndpoint: "https://oauth2.googleapis.com/token",
+  scopes: ["openid", "email", "profile"],
+  tokenEndpointAuthMethod: "client_secret_post",
+};
+
+function encodeBase64(bytes: Uint8Array): string {
+  const globalWithBuffer = globalThis as {
+    Buffer?: {
+      from(input: Uint8Array | string, encoding?: string): {
+        toString(encoding: string): string;
+      };
+    };
+  };
+
+  if (globalWithBuffer.Buffer) {
+    return globalWithBuffer.Buffer.from(bytes).toString("base64");
+  }
+
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function encodeBase64Url(bytes: Uint8Array): string {
+  return encodeBase64(bytes)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+function generateSecureToken(byteLength: number = 32): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return encodeBase64Url(bytes);
+}
+
+function encodeBasicAuth(username: string, password: string): string {
+  return encodeBase64(new TextEncoder().encode(`${username}:${password}`));
+}
+
+function getRequiredString(
+  value: unknown,
+  fieldName: string,
+  context: string
+): string {
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+
+  throw new Error(`Missing ${fieldName} in ${context} response`);
+}
+
+function getRequiredNumber(
+  value: unknown,
+  fieldName: string,
+  context: string
+): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  throw new Error(`Missing ${fieldName} in ${context} response`);
+}
+
+async function sha256(plain: string): Promise<string> {
+  const data = new TextEncoder().encode(plain);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return encodeBase64Url(new Uint8Array(hash));
+}
+
+/**
+ * Sanitize return paths to same-origin relative paths only.
+ * Prevents open redirects after login.
+ */
+export function sanitizeReturnTo(
+  returnTo: string | null | undefined,
+  fallback: string = "/"
+): string {
+  if (!returnTo || !returnTo.startsWith("/") || returnTo.startsWith("//")) {
+    return fallback;
+  }
+
+  try {
+    const parsed = new URL(returnTo, "https://example.com");
+    if (parsed.origin !== "https://example.com") {
+      return fallback;
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
 /**
  * Create an OAuth authorization URL with state and PKCE.
- *
- * Store the returned state and codeVerifier in HttpOnly cookies
- * to verify the callback.
+ * Store state and codeVerifier in short-lived HttpOnly cookies.
  */
 export async function createAuthorizationUrl(
-  config: OAuthProviderConfig
+  config: OAuthProviderConfig,
+  options: {
+    prompt?: string;
+    loginHint?: string;
+  } = {}
 ): Promise<AuthorizationRequest> {
   const state = generateSecureToken(16);
   const codeVerifier = generateSecureToken(32);
@@ -89,6 +176,14 @@ export async function createAuthorizationUrl(
     code_challenge_method: "S256",
   });
 
+  if (options.prompt) {
+    params.set("prompt", options.prompt);
+  }
+
+  if (options.loginHint) {
+    params.set("login_hint", options.loginHint);
+  }
+
   return {
     url: `${config.authorizationEndpoint}?${params.toString()}`,
     state,
@@ -96,22 +191,6 @@ export async function createAuthorizationUrl(
   };
 }
 
-export interface TokenResponse {
-  accessToken: string;
-  tokenType: string;
-  expiresIn?: number;
-  refreshToken?: string;
-  scope?: string;
-  idToken?: string;
-}
-
-/**
- * Exchange authorization code for tokens.
- *
- * @param config - OAuth provider configuration
- * @param code - Authorization code from callback
- * @param codeVerifier - PKCE code verifier from cookie
- */
 export async function exchangeCodeForToken(
   config: OAuthProviderConfig,
   code: string,
@@ -119,19 +198,37 @@ export async function exchangeCodeForToken(
 ): Promise<TokenResponse> {
   const params = new URLSearchParams({
     client_id: config.clientId,
-    client_secret: config.clientSecret,
     code,
     redirect_uri: config.redirectUri,
     grant_type: "authorization_code",
     code_verifier: codeVerifier,
   });
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    Accept: "application/json",
+  };
+
+  const authMethod = config.tokenEndpointAuthMethod ?? "client_secret_basic";
+
+  if (authMethod === "client_secret_basic") {
+    if (!config.clientSecret) {
+      throw new Error("Missing OAuth client secret for client_secret_basic");
+    }
+    headers.Authorization = `Basic ${encodeBasicAuth(
+      config.clientId,
+      config.clientSecret
+    )}`;
+  } else if (authMethod === "client_secret_post") {
+    if (!config.clientSecret) {
+      throw new Error("Missing OAuth client secret for client_secret_post");
+    }
+    params.set("client_secret", config.clientSecret);
+  }
+
   const response = await fetch(config.tokenEndpoint, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
+    headers,
     body: params.toString(),
   });
 
@@ -140,25 +237,28 @@ export async function exchangeCodeForToken(
     throw new Error(`Token exchange failed: ${error}`);
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as Record<string, unknown>;
 
   return {
-    accessToken: data.access_token,
-    tokenType: data.token_type,
-    expiresIn: data.expires_in,
-    refreshToken: data.refresh_token,
-    scope: data.scope,
-    idToken: data.id_token,
+    accessToken: getRequiredString(
+      data.access_token,
+      "access_token",
+      "token exchange"
+    ),
+    tokenType: getRequiredString(
+      data.token_type,
+      "token_type",
+      "token exchange"
+    ),
+    expiresIn:
+      typeof data.expires_in === "number" ? data.expires_in : undefined,
+    refreshToken:
+      typeof data.refresh_token === "string" ? data.refresh_token : undefined,
+    scope: typeof data.scope === "string" ? data.scope : undefined,
+    idToken: typeof data.id_token === "string" ? data.id_token : undefined,
   };
 }
 
-/**
- * Verify the OAuth callback.
- *
- * @param callbackState - State from callback URL query params
- * @param storedState - State from cookie
- * @returns true if state matches
- */
 export function verifyState(
   callbackState: string | null,
   storedState: string | null
@@ -166,15 +266,12 @@ export function verifyState(
   if (!callbackState || !storedState) {
     return false;
   }
-  return callbackState === storedState;
+  return constantTimeEqual(callbackState, storedState);
 }
 
-/**
- * Fetch user info from GitHub API.
- */
 export async function getGitHubUser(
   accessToken: string
-): Promise<{ id: number; login: string; email: string | null }> {
+): Promise<{ id: number; login: string }> {
   const response = await fetch("https://api.github.com/user", {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -186,15 +283,54 @@ export async function getGitHubUser(
     throw new Error("Failed to fetch GitHub user");
   }
 
-  return response.json();
+  const data = (await response.json()) as Record<string, unknown>;
+  return {
+    id: getRequiredNumber(data.id, "id", "GitHub user"),
+    login: getRequiredString(data.login, "login", "GitHub user"),
+  };
 }
 
 /**
- * Fetch user info from Google API.
+ * GitHub often omits email from /user unless it is public.
+ * Use /user/emails and require a verified address before linking accounts.
  */
+export async function getGitHubVerifiedEmail(
+  accessToken: string
+): Promise<string | null> {
+  const response = await fetch("https://api.github.com/user/emails", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/vnd.github+json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch GitHub email addresses");
+  }
+
+  const emails = (await response.json()) as Array<Record<string, unknown>>;
+
+  const primaryVerifiedEmail =
+    emails.find(
+      (entry) => entry.primary === true && entry.verified === true
+    ) ??
+    emails.find((entry) => entry.verified === true);
+
+  if (!primaryVerifiedEmail || typeof primaryVerifiedEmail.email !== "string") {
+    return null;
+  }
+
+  return primaryVerifiedEmail.email.toLowerCase();
+}
+
 export async function getGoogleUser(
   accessToken: string
-): Promise<{ sub: string; email: string; email_verified: boolean; name: string }> {
+): Promise<{
+  sub: string;
+  email: string;
+  email_verified: boolean;
+  name?: string;
+}> {
   const response = await fetch(
     "https://openidconnect.googleapis.com/v1/userinfo",
     {
@@ -208,19 +344,21 @@ export async function getGoogleUser(
     throw new Error("Failed to fetch Google user");
   }
 
-  return response.json();
+  const data = (await response.json()) as Record<string, unknown>;
+  return {
+    sub: getRequiredString(data.sub, "sub", "Google user"),
+    email: getRequiredString(data.email, "email", "Google user").toLowerCase(),
+    email_verified: data.email_verified === true,
+    name: typeof data.name === "string" ? data.name : undefined,
+  };
 }
 
-/**
- * Cookie options for OAuth state and PKCE verifier.
- * Short-lived since they're only needed during the OAuth flow.
- */
 export function getOAuthCookieOptions(secure: boolean = true) {
   return {
     httpOnly: true,
     secure,
     sameSite: "lax" as const,
     path: "/",
-    maxAge: 60 * 10, // 10 minutes
+    maxAge: 60 * 10,
   };
 }

@@ -122,9 +122,12 @@ async function generateHOTP(
   const view = new DataView(counterBytes.buffer);
   view.setBigUint64(0, BigInt(counter), false);
 
+  const keyMaterial = new Uint8Array(secret.byteLength);
+  keyMaterial.set(secret);
+
   const key = await crypto.subtle.importKey(
     "raw",
-    secret,
+    keyMaterial.buffer,
     { name: "HMAC", hash: "SHA-1" },
     false,
     ["sign"]

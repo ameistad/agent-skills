@@ -14,7 +14,7 @@ npx skills add https://github.com/ameistad/agent-skills --skill no-rot
 
 ### [lucia-auth](./lucia-auth)
 
-Implement secure authentication following the patterns from [Lucia Auth](https://lucia-auth.com) and [The Copenhagen Book](https://thecopenhagenbook.com). Includes reference documentation and starter templates for sessions, password auth, OAuth, MFA, and more.
+Implement production-ready web authentication following the patterns from [Lucia Auth](https://lucia-auth.com) and [The Copenhagen Book](https://thecopenhagenbook.com). Includes reference documentation and starter templates for sessions, password auth, email verification, password reset, CSRF protection, OAuth, MFA, and more.
 
 ```bash
 npx skills add https://github.com/ameistad/agent-skills --skill lucia-auth

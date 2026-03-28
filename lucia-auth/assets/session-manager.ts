@@ -1,105 +1,217 @@
 /**
- * Session management utilities
- * Based on Lucia Auth: https://lucia-auth.com/sessions/basic-implementation
+ * Session management helpers for server-side web auth.
+ * Based on Lucia Auth and The Copenhagen Book:
+ * - https://lucia-auth.com/sessions/basic
+ * - https://lucia-auth.com/sessions/inactivity-timeout
+ * - https://thecopenhagenbook.com/sessions
  *
- * Key security features:
- * - Separate session ID and secret (prevents timing attacks)
- * - Secret is hashed before storage
- * - Constant-time comparison for secret validation
- * - Sliding expiration window for active users
+ * Production defaults:
+ * - Separate session ID and secret
+ * - Hash the secret before storage
+ * - Idle timeout plus absolute lifetime
+ * - Fresh-session window for re-auth / sudo mode
+ * - Optional metadata for anomaly detection
  */
 
-const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 30; // 30 days
-const SESSION_REFRESH_THRESHOLD = SESSION_EXPIRES_IN_SECONDS / 2; // 15 days
+export const SESSION_IDLE_TIMEOUT_SECONDS = 60 * 60 * 24 * 30; // 30 days
+export const SESSION_ABSOLUTE_TIMEOUT_SECONDS = 60 * 60 * 24 * 90; // 90 days
+export const SESSION_ACTIVITY_UPDATE_INTERVAL_SECONDS = 60 * 60; // 1 hour
+export const SESSION_FRESH_WINDOW_SECONDS = 60 * 15; // 15 minutes
 
 export interface Session {
   id: string;
   userId: string;
   secretHash: Uint8Array;
   createdAt: Date;
-  expiresAt: Date;
+  lastVerifiedAt: Date;
+  idleExpiresAt: Date;
+  absoluteExpiresAt: Date;
+  freshUntil: Date;
+  ipAddress: string | null;
+  userAgent: string | null;
 }
 
 export interface SessionWithToken extends Session {
   token: string;
 }
 
-/**
- * Generate a cryptographically secure random string.
- * Uses a human-readable alphabet with 120 bits of entropy.
- */
-function generateSecureRandomString(): string {
-  const alphabet = "abcdefghijkmnpqrstuvwxyz23456789";
-  const bytes = new Uint8Array(24);
-  crypto.getRandomValues(bytes);
-
-  let result = "";
-  for (let i = 0; i < bytes.length; i++) {
-    result += alphabet[bytes[i] >> 3];
-  }
-  return result;
+export interface SessionMetadata {
+  ipAddress?: string | null;
+  userAgent?: string | null;
 }
 
-/**
- * Hash a secret using SHA-256.
- * Safe for high-entropy secrets (120+ bits).
- */
+export interface SessionValidationResult {
+  session: Session | null;
+  shouldRefreshCookie: boolean;
+}
+
+interface DatabaseRow {
+  [key: string]: unknown;
+}
+
+interface DatabaseConnection {
+  execute(sql: string, params: unknown[]): Promise<void>;
+  query(sql: string, params: unknown[]): Promise<{ rows: DatabaseRow[] }>;
+}
+
+function addSeconds(date: Date, seconds: number): Date {
+  return new Date(date.getTime() + seconds * 1000);
+}
+
+function toUnixTimeSeconds(date: Date): number {
+  return Math.floor(date.getTime() / 1000);
+}
+
+function fromUnixTimeSeconds(value: unknown): Date {
+  if (typeof value === "number") {
+    return new Date(value * 1000);
+  }
+
+  if (typeof value === "string") {
+    const parsedValue = Number.parseInt(value, 10);
+    if (!Number.isNaN(parsedValue)) {
+      return new Date(parsedValue * 1000);
+    }
+  }
+
+  throw new Error("Expected unix timestamp number");
+}
+
+function toUint8Array(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (Array.isArray(value)) {
+    return new Uint8Array(value);
+  }
+  throw new Error("Expected binary secret hash");
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  const globalWithBuffer = globalThis as {
+    Buffer?: {
+      from(input: Uint8Array | string, encoding?: string): {
+        toString(encoding: string): string;
+      };
+    };
+  };
+
+  if (globalWithBuffer.Buffer) {
+    return globalWithBuffer.Buffer.from(bytes).toString("base64");
+  }
+
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function encodeBase64Url(bytes: Uint8Array): string {
+  return encodeBase64(bytes)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+}
+
+function generateSecureToken(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return encodeBase64Url(bytes);
+}
+
 async function hashSecret(secret: string): Promise<Uint8Array> {
   const secretBytes = new TextEncoder().encode(secret);
   const hashBuffer = await crypto.subtle.digest("SHA-256", secretBytes);
   return new Uint8Array(hashBuffer);
 }
 
-/**
- * Constant-time comparison to prevent timing attacks.
- */
 function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.byteLength !== b.byteLength) {
     return false;
   }
-  let c = 0;
+
+  let result = 0;
   for (let i = 0; i < a.byteLength; i++) {
-    c |= a[i] ^ b[i];
+    result |= a[i] ^ b[i];
   }
-  return c === 0;
+  return result === 0;
+}
+
+function parseSessionToken(
+  token: string
+): { sessionId: string; sessionSecret: string } | null {
+  const separatorIndex = token.indexOf(".");
+  if (separatorIndex <= 0 || separatorIndex === token.length - 1) {
+    return null;
+  }
+
+  if (token.indexOf(".", separatorIndex + 1) !== -1) {
+    return null;
+  }
+
+  return {
+    sessionId: token.slice(0, separatorIndex),
+    sessionSecret: token.slice(separatorIndex + 1),
+  };
 }
 
 /**
- * Create a new session for a user.
- *
- * @param userId - The ID of the user
- * @param db - Your database connection (adapt to your ORM/driver)
- * @returns Session with token to send to client
+ * Create a brand new authenticated session.
+ * Always issue a new session after login to avoid session fixation.
  */
 export async function createSession(
   userId: string,
-  db: DatabaseConnection
+  db: DatabaseConnection,
+  metadata: SessionMetadata = {}
 ): Promise<SessionWithToken> {
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + SESSION_EXPIRES_IN_SECONDS * 1000);
-
-  const id = generateSecureRandomString();
-  const secret = generateSecureRandomString();
-  const secretHash = await hashSecret(secret);
-  const token = `${id}.${secret}`;
+  const tokenId = generateSecureToken(18); // 144 bits
+  const tokenSecret = generateSecureToken(32); // 256 bits
+  const token = `${tokenId}.${tokenSecret}`;
+  const secretHash = await hashSecret(tokenSecret);
 
   const session: SessionWithToken = {
-    id,
+    id: tokenId,
     userId,
     secretHash,
     createdAt: now,
-    expiresAt,
+    lastVerifiedAt: now,
+    idleExpiresAt: addSeconds(now, SESSION_IDLE_TIMEOUT_SECONDS),
+    absoluteExpiresAt: addSeconds(now, SESSION_ABSOLUTE_TIMEOUT_SECONDS),
+    freshUntil: addSeconds(now, SESSION_FRESH_WINDOW_SECONDS),
+    ipAddress: metadata.ipAddress ?? null,
+    userAgent: metadata.userAgent ?? null,
     token,
   };
 
   await db.execute(
-    "INSERT INTO session (id, user_id, secret_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+    `INSERT INTO session (
+      id,
+      user_id,
+      secret_hash,
+      created_at,
+      last_verified_at,
+      idle_expires_at,
+      absolute_expires_at,
+      fresh_until,
+      ip_address,
+      user_agent
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       session.id,
       session.userId,
       session.secretHash,
-      Math.floor(session.createdAt.getTime() / 1000),
-      Math.floor(session.expiresAt.getTime() / 1000),
+      toUnixTimeSeconds(session.createdAt),
+      toUnixTimeSeconds(session.lastVerifiedAt),
+      toUnixTimeSeconds(session.idleExpiresAt),
+      toUnixTimeSeconds(session.absoluteExpiresAt),
+      toUnixTimeSeconds(session.freshUntil),
+      session.ipAddress,
+      session.userAgent,
     ]
   );
 
@@ -107,58 +219,93 @@ export async function createSession(
 }
 
 /**
- * Validate a session token.
- * Returns the session if valid, null otherwise.
- * Automatically extends expiration for active sessions.
+ * Validate a session token and refresh the inactivity window when needed.
  *
- * @param token - The session token from client (format: "id.secret")
- * @param db - Your database connection
+ * When `shouldRefreshCookie` is true, re-set the cookie so the browser
+ * expiration stays aligned with the updated server-side inactivity timeout.
  */
 export async function validateSessionToken(
   token: string,
   db: DatabaseConnection
-): Promise<Session | null> {
-  const tokenParts = token.split(".");
-  if (tokenParts.length !== 2) {
-    return null;
+): Promise<SessionValidationResult> {
+  const parsedToken = parseSessionToken(token);
+  if (parsedToken === null) {
+    return { session: null, shouldRefreshCookie: false };
   }
 
-  const [sessionId, sessionSecret] = tokenParts;
-  const session = await getSession(db, sessionId);
-
-  if (!session) {
-    return null;
+  const session = await getSession(db, parsedToken.sessionId);
+  if (session === null) {
+    return { session: null, shouldRefreshCookie: false };
   }
 
-  const tokenSecretHash = await hashSecret(sessionSecret);
+  const tokenSecretHash = await hashSecret(parsedToken.sessionSecret);
   if (!constantTimeEqual(tokenSecretHash, session.secretHash)) {
-    return null;
+    return { session: null, shouldRefreshCookie: false };
   }
 
   const now = new Date();
-
-  if (now >= session.expiresAt) {
-    await deleteSession(db, sessionId);
-    return null;
+  if (now >= session.idleExpiresAt || now >= session.absoluteExpiresAt) {
+    await deleteSession(db, session.id);
+    return { session: null, shouldRefreshCookie: false };
   }
 
-  const shouldRefresh =
-    session.expiresAt.getTime() - now.getTime() <
-    SESSION_REFRESH_THRESHOLD * 1000;
+  const shouldUpdateActivity =
+    now.getTime() - session.lastVerifiedAt.getTime() >=
+    SESSION_ACTIVITY_UPDATE_INTERVAL_SECONDS * 1000;
 
-  if (shouldRefresh) {
-    session.expiresAt = new Date(
-      now.getTime() + SESSION_EXPIRES_IN_SECONDS * 1000
+  if (shouldUpdateActivity) {
+    session.lastVerifiedAt = now;
+    session.idleExpiresAt = addSeconds(now, SESSION_IDLE_TIMEOUT_SECONDS);
+    await db.execute(
+      "UPDATE session SET last_verified_at = ?, idle_expires_at = ? WHERE id = ?",
+      [
+        toUnixTimeSeconds(session.lastVerifiedAt),
+        toUnixTimeSeconds(session.idleExpiresAt),
+        session.id,
+      ]
     );
-    await updateSessionExpiration(db, sessionId, session.expiresAt);
   }
 
-  return session;
+  return {
+    session,
+    shouldRefreshCookie: shouldUpdateActivity,
+  };
+}
+
+export function isFreshSession(session: Session, now: Date = new Date()): boolean {
+  return now < session.freshUntil;
 }
 
 /**
- * Invalidate a session (sign out).
+ * Mark a session as fresh again after a password, TOTP, or WebAuthn challenge.
  */
+export async function markSessionFresh(
+  db: DatabaseConnection,
+  sessionId: string,
+  now: Date = new Date()
+): Promise<Date> {
+  const freshUntil = addSeconds(now, SESSION_FRESH_WINDOW_SECONDS);
+  await db.execute("UPDATE session SET fresh_until = ? WHERE id = ?", [
+    toUnixTimeSeconds(freshUntil),
+    sessionId,
+  ]);
+  return freshUntil;
+}
+
+/**
+ * Replace an existing session with a brand new one.
+ * Useful after privileged actions or suspected token leakage.
+ */
+export async function replaceSession(
+  db: DatabaseConnection,
+  sessionId: string,
+  userId: string,
+  metadata: SessionMetadata = {}
+): Promise<SessionWithToken> {
+  await deleteSession(db, sessionId);
+  return createSession(userId, db, metadata);
+}
+
 export async function invalidateSession(
   db: DatabaseConnection,
   sessionId: string
@@ -166,10 +313,6 @@ export async function invalidateSession(
   await deleteSession(db, sessionId);
 }
 
-/**
- * Invalidate all sessions for a user.
- * Use after password change or security events.
- */
 export async function invalidateAllUserSessions(
   db: DatabaseConnection,
   userId: string
@@ -177,12 +320,35 @@ export async function invalidateAllUserSessions(
   await db.execute("DELETE FROM session WHERE user_id = ?", [userId]);
 }
 
+export async function deleteExpiredSessions(
+  db: DatabaseConnection,
+  now: Date = new Date()
+): Promise<void> {
+  const unixNow = toUnixTimeSeconds(now);
+  await db.execute(
+    "DELETE FROM session WHERE idle_expires_at <= ? OR absolute_expires_at <= ?",
+    [unixNow, unixNow]
+  );
+}
+
 async function getSession(
   db: DatabaseConnection,
   sessionId: string
 ): Promise<Session | null> {
   const result = await db.query(
-    "SELECT id, user_id, secret_hash, created_at, expires_at FROM session WHERE id = ?",
+    `SELECT
+      id,
+      user_id,
+      secret_hash,
+      created_at,
+      last_verified_at,
+      idle_expires_at,
+      absolute_expires_at,
+      fresh_until,
+      ip_address,
+      user_agent
+    FROM session
+    WHERE id = ?`,
     [sessionId]
   );
 
@@ -192,11 +358,22 @@ async function getSession(
 
   const row = result.rows[0];
   return {
-    id: row.id,
-    userId: row.user_id,
-    secretHash: row.secret_hash,
-    createdAt: new Date(row.created_at * 1000),
-    expiresAt: new Date(row.expires_at * 1000),
+    id: String(row.id),
+    userId: String(row.user_id),
+    secretHash: toUint8Array(row.secret_hash),
+    createdAt: fromUnixTimeSeconds(row.created_at),
+    lastVerifiedAt: fromUnixTimeSeconds(row.last_verified_at),
+    idleExpiresAt: fromUnixTimeSeconds(row.idle_expires_at),
+    absoluteExpiresAt: fromUnixTimeSeconds(row.absolute_expires_at),
+    freshUntil: fromUnixTimeSeconds(row.fresh_until),
+    ipAddress:
+      row.ip_address === null || row.ip_address === undefined
+        ? null
+        : String(row.ip_address),
+    userAgent:
+      row.user_agent === null || row.user_agent === undefined
+        ? null
+        : String(row.user_agent),
   };
 }
 
@@ -207,35 +384,18 @@ async function deleteSession(
   await db.execute("DELETE FROM session WHERE id = ?", [sessionId]);
 }
 
-async function updateSessionExpiration(
-  db: DatabaseConnection,
-  sessionId: string,
-  expiresAt: Date
-): Promise<void> {
-  await db.execute("UPDATE session SET expires_at = ? WHERE id = ?", [
-    Math.floor(expiresAt.getTime() / 1000),
-    sessionId,
-  ]);
-}
-
 /**
- * Cookie configuration for session tokens.
- * Based on Copenhagen Book: https://thecopenhagenbook.com/sessions
+ * Session cookie configuration for browser-based web apps.
  */
-export function getSessionCookieOptions(secure: boolean = true) {
+export function getSessionCookieOptions(
+  secure: boolean = true,
+  sameSite: "lax" | "strict" = "lax"
+) {
   return {
     httpOnly: true,
     secure,
-    sameSite: "lax" as const,
+    sameSite,
     path: "/",
-    maxAge: SESSION_EXPIRES_IN_SECONDS,
+    maxAge: SESSION_IDLE_TIMEOUT_SECONDS,
   };
-}
-
-/**
- * Placeholder type - replace with your actual database connection type
- */
-interface DatabaseConnection {
-  execute(sql: string, params: unknown[]): Promise<void>;
-  query(sql: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }

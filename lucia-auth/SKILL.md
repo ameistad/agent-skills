@@ -1,131 +1,165 @@
 ---
 name: lucia-auth
-description: Implement authentication following Lucia Auth best practices. Use when users ask to "add auth", "implement authentication", "setup login", "add sessions", "implement OAuth", "add 2FA/MFA", "password hashing", or reference "lucia auth" or "copenhagen book" patterns.
+description: Build production-ready web authentication using Lucia Auth and The Copenhagen Book patterns. Use when users ask to "add auth", "implement authentication", "setup login", "add sessions", "password reset", "verify email", "implement OAuth", "add 2FA/MFA", "add passkeys", "password hashing", or reference "lucia auth" or "the copenhagen book". Default to a production baseline for browser-based web apps, not a demo-only login flow.
 ---
 
 # Lucia Auth
 
-Implements secure authentication following the patterns from [Lucia Auth](https://lucia-auth.com) and [The Copenhagen Book](https://thecopenhagenbook.com).
+Implements secure, production-oriented authentication using the patterns from [Lucia Auth](https://lucia-auth.com) and [The Copenhagen Book](https://thecopenhagenbook.com).
 
-## How It Works
+## Overview
 
-1. Identify what type of authentication the user needs
-2. Read the relevant reference documentation
-3. Use the provided templates as a starting point
-4. Adapt the templates to the user's framework and database
+For browser-based web apps, treat auth as a system instead of a pair of login routes. If a user asks to "add auth" and does not explicitly ask for a toy example, ship a production baseline by default.
 
-## Decision Tree
+## Production Baseline For Web Apps
 
-When a user asks for authentication, determine which components they need:
+When the repo does not already provide equivalents, the default baseline is:
 
-### Basic Auth (Username/Password)
-- Read: `references/copenhagen-book/password-authentication.md`
-- Read: `references/copenhagen-book/sessions.md`
-- Read: `references/lucia/sessions-basic.md`
-- Templates: `assets/password-utils.ts`, `assets/session-manager.ts`, `assets/session-schema.sql`
+1. Email/password sign up, sign in, and sign out
+2. Server-side sessions in `HttpOnly`, `Secure`, `SameSite` cookies
+3. Email verification plus resend flow
+4. Password reset flow
+5. Rate limiting on every auth and email-sending endpoint
+6. CSRF protection or strict `Origin` validation on every state-changing route
+7. Session invalidation on password change, email verification/change, and permission changes
+8. Re-authentication ("sudo mode") for sensitive actions such as changing password/email, deleting account, disabling MFA, or viewing API keys
+9. Safe post-auth redirects with open-redirect protection
+10. Optional OAuth, TOTP, or WebAuthn layered on top as requested
 
-### OAuth (Social Login)
-- Read: `references/copenhagen-book/oauth.md`
-- Read: `references/lucia/tutorial-github-oauth.md` or `tutorial-google-oauth.md`
-- Templates: `assets/oauth-handler.ts`
+Do not default to JWTs in `localStorage` for a normal web app. Prefer server-side sessions unless the architecture clearly requires stateless tokens.
 
-### Email Verification
-- Read: `references/copenhagen-book/email-verification.md`
-- Templates: `assets/email-verification.ts`
+## Required Reference Reads
 
-### Multi-Factor Authentication (MFA/2FA)
-- Read: `references/copenhagen-book/mfa.md`
-- For TOTP: Templates: `assets/totp-mfa.ts`
-- For WebAuthn: Read: `references/copenhagen-book/webauthn.md`
+For any browser-based web auth task, always read these first:
 
-### Session Management Only
-- Read: `references/lucia/sessions-overview.md`
-- Read: `references/lucia/sessions-basic.md`
-- Read: `references/lucia/sessions-inactivity-timeout.md`
-- Templates: `assets/session-manager.ts`
+- `references/copenhagen-book/password-authentication.md`
+- `references/copenhagen-book/sessions.md`
+- `references/copenhagen-book/csrf.md`
+- `references/copenhagen-book/email-verification.md`
+- `references/copenhagen-book/password-reset.md`
+- `references/copenhagen-book/open-redirect.md`
+- `references/lucia/sessions-basic.md`
+- `references/lucia/sessions-inactivity-timeout.md`
+- `references/lucia/rate-limit-token-bucket.md`
 
-### Security Concerns
-- CSRF: Read: `references/copenhagen-book/csrf.md`
-- Rate Limiting: Read: `references/lucia/rate-limit-token-bucket.md`
-- Password Reset: Read: `references/copenhagen-book/password-reset.md`
+Read these when relevant:
 
-## Key Security Principles
+- OAuth: `references/copenhagen-book/oauth.md`, then `references/lucia/tutorial-github-oauth.md` or `references/lucia/tutorial-google-oauth.md`
+- MFA: `references/copenhagen-book/mfa.md`
+- WebAuthn / passkeys: `references/copenhagen-book/webauthn.md`, then `references/lucia/example-email-password-2fa-webauthn.md`
+- Session tradeoffs: `references/lucia/sessions-overview.md`, `references/lucia/sessions-stateless-tokens.md`
 
-Always follow these principles when implementing auth:
+## Implementation Workflow
+
+1. Inspect the repo for existing auth, user, email, session, middleware, and database patterns.
+2. Decide the auth surface area.
+   For a standard web app, default to the production baseline above.
+3. Create or update the auth schema first.
+   At minimum: `user`, `session`, `email_verification`, and `password_reset`.
+   Add `oauth_account`, `user_totp`, `user_recovery_code`, or WebAuthn tables only when needed.
+4. Implement secure primitives next.
+   Password hashing, session issuance/validation, CSRF/origin checks, rate limiting, token generation, and redirect validation.
+5. Wire complete user flows.
+   Registration, login, logout, verify email, resend verification, forgot password, reset password, change password, and revoke sessions.
+6. Add sensitive-action re-auth.
+   Changing email/password, account deletion, disabling MFA, or security settings should require a fresh session or a new credential challenge.
+7. Verify behavior.
+   Confirm cookie flags, rate limits, invalidation behavior, expired-token handling, and unhappy paths.
+
+## Security Rules
 
 ### Passwords
-- Hash with Argon2id (or Scrypt/Bcrypt as fallbacks)
-- Minimum 8 characters, no artificial maximum under 64
-- Check against haveibeenpwned for compromised passwords
-- Use constant-time comparison
+
+- Hash passwords with Argon2id. Scrypt is an acceptable fallback, bcrypt only for legacy constraints.
+- Minimum length is 8 characters. Do not set a low maximum; 64-256 is a reasonable bound.
+- Do not silently trim, normalize, or truncate passwords.
+- Allow copy/paste and password managers.
+- Check leaked passwords with haveibeenpwned when practical.
+- Recommend MFA for security-sensitive apps and require it when the app meaningfully needs it.
+
+### Emails
+
+- Normalize emails to lowercase before storing or comparing.
+- Keep validation simple to avoid ReDoS.
+- Do not silently remove `+tag` segments.
+- If email is used for identity recovery, implement verification before treating it as trusted.
 
 ### Sessions
-- Generate IDs with 120+ bits of entropy using crypto.getRandomValues()
-- Store secret hash, not the raw secret
-- Set HttpOnly, Secure, SameSite=Lax cookies
-- Implement sliding expiration for user-friendly apps
-- Invalidate all sessions on password change
 
-### OAuth
-- Always use PKCE (code_challenge with S256)
-- Store state in HttpOnly cookies
-- Verify state on callback
-- Link accounts by verified email only
+- Create a brand new session on login. Never reuse a pre-auth or anonymous session after authentication.
+- Store a hash of the session secret, not the raw secret.
+- Prefer idle expiration plus an absolute lifetime.
+- Track session freshness for re-auth flows.
+- Invalidate all sessions when credentials or privileges change.
+- Never accept session tokens through URLs.
 
-### General
-- Never trust client-provided data
-- Implement rate limiting on all auth endpoints
-- Use generic error messages ("Incorrect username or password")
-- Verify CSRF tokens on state-changing operations
+### Cookies
 
-## Template Usage
+- Use `HttpOnly`, `Secure`, `Path=/`, and `SameSite=Lax` by default.
+- Use `SameSite=Strict` only when the UX tradeoff is acceptable.
+- Refresh long-lived cookies when the server refreshes the session inactivity window.
 
-The templates in `assets/` are framework-agnostic TypeScript. When using them:
+### CSRF
 
-1. Adapt the database interface to match the user's ORM/driver
-2. Adjust cookie handling for the user's framework
-3. Keep the core security logic unchanged
-4. Add any framework-specific middleware
+- Do not mutate state with `GET`.
+- Check `Origin` on all non-GET browser requests and reject when missing or untrusted.
+- For form-heavy apps, add CSRF tokens as a second layer.
+- Keep CORS strict so CSRF tokens cannot be harvested cross-origin.
 
-## When to Read Full References
+### OAuth / OIDC
 
-Read the full reference documentation when:
-- The user has specific questions about security tradeoffs
-- Implementing edge cases (stateless tokens, sudo mode, etc.)
-- The user explicitly asks about best practices
-- You need to understand the "why" behind a pattern
+- Use Authorization Code + PKCE.
+- Verify `state` and the code verifier on callback.
+- Prefer `client_secret_basic` when the provider supports it.
+- Link accounts by provider subject first, and only auto-link by email when the provider explicitly marks the email as verified.
+- Sanitize any post-login `returnTo` or `redirect_to` value to same-origin paths only.
 
-## Example Scenarios
+### Verification And Reset Tokens
 
-### User asks: "Add authentication to my Express app"
-1. Ask if they need OAuth, password auth, or both
-2. Read relevant references based on their choice
-3. Create session table migration
-4. Implement password hashing with `assets/password-utils.ts`
-5. Implement session management with `assets/session-manager.ts`
-6. Add login/logout/register routes
-7. Add session middleware
+- Use high-entropy random tokens for links.
+- Hash link tokens before storage with SHA-256.
+- Keep tokens single-use and expire them automatically.
+- Put token-bearing pages behind `Referrer-Policy: strict-origin`.
+- Email-sending endpoints must be strictly rate limited.
 
-### User asks: "Add Google OAuth"
-1. Read `references/copenhagen-book/oauth.md`
-2. Use `assets/oauth-handler.ts` as base
-3. Create routes: GET /auth/google, GET /auth/google/callback
-4. Implement user creation/linking on callback
-5. Create session after successful OAuth
+## Template Map
 
-### User asks: "Add 2FA to existing auth"
-1. Read `references/copenhagen-book/mfa.md`
-2. Use `assets/totp-mfa.ts`
-3. Add TOTP secret column to user table
-4. Create setup flow (generate secret, show QR, verify)
-5. Add 2FA check to login flow
-6. Generate and store hashed recovery codes
+Use these assets as starting points and adapt them to the framework and ORM already in the repo:
 
-## Updating Resources
+- Password hashing and password policy: `assets/password-utils.ts`
+- Session issuance, validation, inactivity timeout, and fresh-session helpers: `assets/session-manager.ts`
+- Core SQL schema: `assets/session-schema.sql`
+- Email verification links and codes: `assets/email-verification.ts`
+- Password reset flow: `assets/password-reset.ts`
+- OAuth + PKCE flow helpers: `assets/oauth-handler.ts`
+- CSRF and origin validation helpers: `assets/csrf-protection.ts`
+- Token bucket rate limiting: `assets/rate-limit.ts`
+- TOTP MFA and recovery codes: `assets/totp-mfa.ts`
 
-The reference documentation can be updated by running:
-```bash
-./scripts/fetch-resources.sh
-```
+## When To Escalate Beyond The Baseline
 
-Check `references/VERSION.md` for current source versions.
+Add WebAuthn or passkeys when:
+
+- The user explicitly asks for passkeys or WebAuthn
+- The product is security-sensitive
+- The app wants phishing-resistant MFA
+
+Add OAuth when:
+
+- The product already uses external identity providers
+- The user explicitly asks for social login
+- The app benefits from lower signup friction
+
+Use stateless tokens only when:
+
+- The app is an API-first system that cannot rely on same-origin cookies, or
+- There is a clear multi-service architecture reason
+
+## Output Expectations
+
+When using this skill, the final answer should make it clear:
+
+1. Which auth flows were implemented
+2. Which security controls were included by default
+3. Any remaining assumptions or provider-specific configuration the user must supply
+4. What was verified locally and what still needs integration testing
