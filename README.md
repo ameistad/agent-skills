@@ -12,6 +12,14 @@ Prevents brain atrophy from LLM over-reliance by leaving engaging challenges for
 npx skills add https://github.com/ameistad/agent-skills --skill no-rot
 ```
 
+### [one-source-of-truth](./one-source-of-truth)
+
+Keeps AI-assisted codebases from rotting their data model. Before any schema change it maps existing concepts, questions ambiguous ownership (should this value be a snapshot or a live reference?), decides a single source of truth, and records meanings in a data dictionary. Also audits existing schemas for duplicate concepts, undecided masters, and half-wired tables. Code is cheap to regenerate; recorded data is not.
+
+```bash
+npx skills add https://github.com/ameistad/agent-skills --skill one-source-of-truth
+```
+
 ### [lucia-auth](./lucia-auth)
 
 Implement production-ready web authentication following the patterns from [Lucia Auth](https://lucia-auth.com) and [The Copenhagen Book](https://thecopenhagenbook.com). Includes reference documentation and starter templates for sessions, password auth, email verification, password reset, CSRF protection, OAuth, MFA, and more.
