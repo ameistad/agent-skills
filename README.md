@@ -52,6 +52,14 @@ Rewrite generic, formulaic, or overly polished text in a natural voice while pre
 npx skills add https://github.com/ameistad/agent-skills --skill ai-writing-humanizer
 ```
 
+### [design-jig](./design-jig)
+
+Explore design values by feel instead of by guessing. The agent drops a temporary "jig" into your React or React Native app. It's a dev-only panel with a color wheel, sliders, toggles and variant pickers, and the UI updates live as you change them. When it looks right, press Lock and paste the result back. The agent writes the chosen values into your code the way you would have written them (Tailwind classes, CSS, StyleSheet, theme tokens), then removes every trace of the panel and proves it with a leftover scan, the typecheck, and the diff. Works with Vite, Next.js (including server components), Expo, Expo Router and bare React Native. It installs no packages. Inspired by Maggie Appleton's jigs, from her conversation on The Pragmatic Engineer.
+
+```bash
+npx skills add https://github.com/ameistad/agent-skills --skill design-jig
+```
+
 ## Creating Your Own Skills
 
 See [AGENTS.md](./AGENTS.md) for guidance on creating new skills.
