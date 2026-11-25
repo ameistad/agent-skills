@@ -60,10 +60,18 @@ Explore design values by feel instead of by guessing. The agent drops a temporar
 npx skills add https://github.com/ameistad/agent-skills --skill design-jig
 ```
 
+### [design](./design)
+
+A design skill that works like a studio review. The agent decides a direction before it writes code, then shows real options side by side on a preview board in your browser: directions for a new page, or variants of an existing component. Choose one, send notes for another round, or ask for different options. After every change lands in your code, the board shows the real page with a suggestion box for what to change next. Also includes named moves (bolder, quieter, distill, typeset, colorize, layout, animate, delight, polish) and a scored critique. The board is one zero-dependency Node script and installs nothing into your project. Design flows adapted from Impeccable and Anthropic's frontend-design skill.
+
+```bash
+npx skills add https://github.com/ameistad/agent-skills --skill design
+```
+
 ## Creating Your Own Skills
 
 See [AGENTS.md](./AGENTS.md) for guidance on creating new skills.
 
 ## License
 
-MIT
+MIT, except [design](./design), which is Apache-2.0 because it adapts Apache-licensed material.

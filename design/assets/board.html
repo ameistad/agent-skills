@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Preview board</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --ground: #eef0f3; --surface: #ffffff; --sunken: #e3e6ea;
+    --ink: #15181d; --ink-2: #4c5563; --line: #d3d8df;
+    --action: #1f4fd8; --action-ink: #ffffff; --action-soft: #e4eafc;
+    --warn: #8a4b00; --warn-soft: #fdf0d9;
+    --radius: 10px;
+    --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #111317; --surface: #1a1d23; --sunken: #0b0d10;
+      --ink: #eceef2; --ink-2: #a3acba; --line: #2c313a;
+      --action: #8eabff; --action-ink: #0b1230; --action-soft: #1d2748;
+      --warn: #f3c074; --warn-soft: #33270f;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; }
+  body { background: var(--ground); color: var(--ink); font: 15px/1.5 var(--font); padding-bottom: 190px; }
+  ::selection { background: var(--action); color: var(--action-ink); }
+  button, textarea, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+
+  header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; padding: 28px 32px 20px; }
+  h1 { font-size: 22px; line-height: 1.25; font-weight: 650; margin: 0; text-wrap: balance; }
+  .question { margin: 4px 0 0; color: var(--ink-2); max-width: 70ch; }
+  .tools { display: flex; align-items: center; gap: 14px; color: var(--ink-2); font-size: 13px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button { border: 0; background: transparent; padding: 6px 12px; cursor: pointer; color: var(--ink-2); }
+  .seg button[aria-pressed="true"] { background: var(--action-soft); color: var(--ink); font-weight: 600; }
+
+  main { display: grid; gap: 20px; padding: 0 32px; align-items: start; }
+  main.desktop { grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); }
+  main.mobile { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+  main.single { grid-template-columns: minmax(0, 1320px); justify-content: center; }
+
+  .card { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
+  .card.chosen { border-color: var(--action); box-shadow: 0 0 0 2px var(--action); }
+  .stage { position: relative; background: var(--sunken); overflow: hidden; border-bottom: 1px solid var(--line); }
+  .stage iframe { display: block; border: 0; background: #fff; transform-origin: 0 0; }
+  .stage img { display: block; width: 100%; height: auto; }
+  .stage .empty { padding: 48px 20px; text-align: center; color: var(--ink-2); }
+  .stage-tools { position: absolute; top: 8px; right: 8px; display: flex; gap: 6px; }
+  .chip-btn { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; text-decoration: none; color: var(--ink); }
+  .chip-btn:hover { border-color: var(--ink-2); }
+
+  .body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+  h2 { font-size: 17px; line-height: 1.3; margin: 0; font-weight: 650; }
+  .summary { margin: 0; color: var(--ink); max-width: 68ch; }
+  dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; font-size: 13px; }
+  dt { color: var(--ink-2); }
+  dd { margin: 0; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+  .swatch { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--line); }
+  ul.notes { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
+  .note { width: 100%; min-height: 36px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; background: var(--ground); padding: 7px 10px; font-size: 13px; }
+  .ref { margin: 0; color: var(--ink-2); font-size: 13px; }
+  .card-actions { margin-top: auto; padding-top: 6px; display: flex; gap: 8px; }
+
+  .btn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 14px; cursor: pointer; font-weight: 600; }
+  .btn:hover { border-color: var(--ink-2); }
+  .btn.primary { background: var(--action); border-color: var(--action); color: var(--action-ink); }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn:disabled, .note:disabled, #suggestion:disabled { opacity: .55; cursor: default; }
+
+  .dock { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -6px 24px rgb(0 0 0 / .08); padding: 14px 32px 16px; }
+  .dock-inner { max-width: 1100px; margin: 0 auto; display: grid; gap: 10px; }
+  .dock label { font-weight: 650; }
+  .dock .hint { color: var(--ink-2); font-size: 13px; font-weight: 400; margin-left: 8px; }
+  #suggestion { width: 100%; min-height: 62px; max-height: 40vh; resize: vertical; border: 1px solid var(--line); border-radius: 8px; background: var(--ground); padding: 9px 12px; }
+  .dock-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .dock-msg { color: var(--warn); font-size: 13px; margin-left: 4px; }
+  .banner { display: grid; gap: 4px; }
+  .banner strong { font-size: 16px; }
+  .banner p { margin: 0; color: var(--ink-2); max-width: 80ch; white-space: pre-wrap; }
+  .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--action); margin-right: 8px; animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+  .alert { background: var(--warn-soft); color: var(--warn); padding: 10px 32px; font-weight: 600; }
+
+  dialog { border: 0; padding: 0; background: var(--ground); color: var(--ink); width: 100vw; height: 100vh; max-width: none; max-height: none; }
+  dialog::backdrop { background: rgb(0 0 0 / .5); }
+  .lb-bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+  .lb-bar h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lb-stage { height: calc(100vh - 58px); overflow: auto; padding: 16px; display: flex; justify-content: center; align-items: flex-start; }
+  .lb-stage .stage { border: 1px solid var(--line); border-radius: var(--radius); flex: none; }
+
+  @media (max-width: 640px) {
+    header, main { padding-left: 16px; padding-right: 16px; }
+    .dock { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+<div id="alert" class="alert" hidden></div>
+<header>
+  <div>
+    <h1 id="title">Loading the board</h1>
+    <p class="question" id="question"></p>
+  </div>
+  <div class="tools">
+    <span id="round"></span>
+    <div class="seg" role="group" aria-label="Preview size">
+      <button type="button" data-vp="desktop" aria-pressed="false">Desktop</button>
+      <button type="button" data-vp="mobile" aria-pressed="false">Mobile</button>
+    </div>
+  </div>
+</header>
+
+<main id="grid"></main>
+
+<div class="dock">
+  <div class="dock-inner" id="dock-open">
+    <label for="suggestion">Suggestions<span class="hint" id="dock-hint"></span></label>
+    <textarea id="suggestion" placeholder="What should change? Mix ideas across options, name what is missing, or describe what you expected to see."></textarea>
+    <div class="dock-actions">
+      <button class="btn primary" type="button" id="send">Send suggestions</button>
+      <button class="btn" type="button" id="reroll">Show different options</button>
+      <span class="dock-msg" id="dock-msg" role="status"></span>
+    </div>
+  </div>
+  <div class="dock-inner banner" id="dock-banner" hidden>
+    <strong id="banner-title"></strong>
+    <p id="banner-text"></p>
+  </div>
+</div>
+
+<dialog id="lightbox" aria-labelledby="lb-name">
+  <div class="lb-bar">
+    <button class="btn" type="button" id="lb-prev" aria-label="Previous option">Previous</button>
+    <button class="btn" type="button" id="lb-next" aria-label="Next option">Next</button>
+    <h2 id="lb-name"></h2>
+    <button class="btn primary" type="button" id="lb-pick"></button>
+    <button class="btn" type="button" id="lb-close">Close</button>
+  </div>
+  <div class="lb-stage" id="lb-stage"></div>
+</dialog>
+
+<script>
+(() => {
+  const VIEWPORTS = { desktop: { width: 1280, height: 800 }, mobile: { width: 390, height: 844 } };
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, props = {}, kids = []) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v;
+      else if (k in n) n[k] = v; else n.setAttribute(k, v);
+    }
+    for (const kid of [].concat(kids)) if (kid) n.append(kid);
+    return n;
+  };
+
+  let board = null, round = 0, status = '', vp = null, vpName = 'desktop';
+  let notes = {}, fails = 0, stopped = false, sentAnswer = null, lbIndex = -1, lbObserver = null;
+  const observers = [];
+
+  function frameFor(option, pad = 0) {
+    const stage = el('div', { class: 'stage' });
+    const p = option.preview;
+    if (!p) { stage.append(el('div', { class: 'empty', text: 'No preview for this option. Read the description below.' })); return stage; }
+    if (p.kind === 'image') { stage.append(el('img', { src: p.src, alt: 'Preview of ' + option.name })); return stage; }
+    const frame = el('iframe', { title: 'Preview of ' + option.name, loading: 'lazy', referrerPolicy: 'no-referrer' });
+    if (p.sandbox) frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups');
+    frame.src = p.src;
+    stage.append(frame);
+    const fit = () => {
+      const avail = (stage.parentElement ? stage.parentElement.clientWidth : vp.width) - pad;
+      if (avail <= 0) return;
+      const scale = Math.min(1, avail / vp.width);
+      frame.style.width = vp.width + 'px';
+      frame.style.height = vp.height + 'px';
+      frame.style.transform = 'scale(' + scale + ')';
+      stage.style.height = Math.round(vp.height * scale) + 'px';
+      stage.style.width = Math.round(vp.width * scale) + 'px';
+      stage.style.margin = '0 auto';
+    };
+    stage._fit = fit;
+    return stage;
+  }
+
+  function watch(stage, host) {
+    if (!stage._fit) return;
+    const ro = new ResizeObserver(() => stage._fit());
+    ro.observe(host);
+    observers.push(ro);
+    stage._fit();
+  }
+
+  function render() {
+    observers.splice(0).forEach((o) => o.disconnect());
+    document.title = board.title + ' (preview board)';
+    $('title').textContent = board.title;
+    $('question').textContent = board.question || '';
+    $('round').textContent = 'Round ' + round;
+    document.querySelectorAll('[data-vp]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.vp === vpName)));
+    const grid = $('grid');
+    grid.replaceChildren();
+    grid.className = board.options.length === 1 ? 'single' : (vp.width < 700 ? 'mobile' : 'desktop');
+    board.options.forEach((o, i) => {
+      const host = el('div');
+      const stage = frameFor(o);
+      host.append(stage);
+      if (o.preview && o.preview.kind === 'frame') {
+        stage.append(el('div', { class: 'stage-tools' }, [
+          el('button', { class: 'chip-btn', type: 'button', text: 'Expand', onclick: () => openLightbox(i) }),
+          el('a', { class: 'chip-btn', href: o.preview.src, target: '_blank', rel: 'noreferrer noopener', text: 'New tab' }),
+        ]));
+      }
+      const rows = [];
+      if (o.axis) rows.push(el('dt', { text: 'Varies' }), el('dd', { text: o.axis }));
+      if (o.fonts.length) rows.push(el('dt', { text: 'Type' }), el('dd', { text: o.fonts.join(', ') }));
+      if (o.risk) rows.push(el('dt', { text: 'Tradeoff' }), el('dd', { text: o.risk }));
+      const note = el('textarea', { class: 'note', rows: 1, placeholder: 'Note on this option (optional)', value: notes[o.id] || '' });
+      note.setAttribute('aria-label', 'Note on ' + o.name);
+      note.addEventListener('input', () => { notes[o.id] = note.value; });
+      const card = el('article', { class: 'card' }, [
+        host,
+        el('div', { class: 'body' }, [
+          el('h2', { text: o.name }),
+          o.summary ? el('p', { class: 'summary', text: o.summary }) : null,
+          o.palette.length ? el('div', { class: 'swatches' }, o.palette.map((c) => {
+            const s = el('span', { class: 'swatch', title: c, role: 'img' });
+            s.setAttribute('aria-label', 'Color ' + c);
+            s.style.background = c;
+            return s;
+          })) : null,
+          rows.length ? el('dl', {}, rows) : null,
+          o.notes.length ? el('ul', { class: 'notes' }, o.notes.map((n) => el('li', { text: n }))) : null,
+          o.reference ? el('p', { class: 'ref', text: 'Shown for comparison.' }) : note,
+          o.reference ? null : el('div', { class: 'card-actions' }, [
+            el('button', { class: 'btn primary', type: 'button', text: board.pickLabel, onclick: () => submit('pick', o.id) }),
+          ]),
+        ]),
+      ]);
+      card.dataset.id = o.id;
+      grid.append(card);
+      watch(stage, host);
+    });
+    $('reroll').hidden = !board.allowReroll;
+    $('send').textContent = board.kind === 'review' ? 'Send changes' : 'Send suggestions';
+    $('dock-hint').textContent = board.kind === 'review'
+      ? 'Approve it on the card, or say what to change.'
+      : 'Choosing an option sends these along as tweaks to apply.';
+    $('dock-msg').textContent = '';
+  }
+
+  function describe(a) {
+    if (!a) return '';
+    const opt = board.options.find((o) => o.id === a.optionId);
+    const bits = [];
+    if (a.action === 'pick') bits.push('Chosen: ' + (opt ? opt.name : a.optionId) + '.');
+    if (a.action === 'revise') bits.push('Suggestions sent.');
+    if (a.action === 'reroll') bits.push('Asked for different options.');
+    if (a.suggestion) bits.push('"' + a.suggestion + '"');
+    const n = Object.keys(a.notes || {}).length;
+    if (n) bits.push(n + (n === 1 ? ' note' : ' notes') + ' on options.');
+    return bits.join(' ');
+  }
+
+  function applyStatus(state) {
+    const open = status === 'open';
+    $('dock-open').hidden = !open;
+    $('dock-banner').hidden = open;
+    document.querySelectorAll('.card button, .card textarea').forEach((n) => { n.disabled = !open; });
+    document.querySelectorAll('.card').forEach((c) => {
+      const a = sentAnswer || state.lastAnswer;
+      c.classList.toggle('chosen', !open && !!a && a.round === round && a.action === 'pick' && a.optionId === c.dataset.id);
+    });
+    if (status === 'answered') {
+      const a = sentAnswer || state.lastAnswer;
+      $('banner-title').replaceChildren(el('span', { class: 'pulse' }), 'Sent to the agent');
+      $('banner-text').textContent = describe(a) + ' The next round appears here when it is ready. Keep this tab open.';
+    } else if (status === 'closed') {
+      $('banner-title').textContent = 'This board is closed';
+      $('banner-text').textContent = (state.closeMessage ? state.closeMessage + ' ' : '') + 'You can close this tab.';
+      if ($('lightbox').open) $('lightbox').close();
+    }
+  }
+
+  function apply(state) {
+    const fresh = state.round !== round;
+    if (fresh) {
+      round = state.round; board = state.board; notes = {}; sentAnswer = null;
+      $('suggestion').value = '';
+      if (!vp || fresh) { vpName = board.viewportName; vp = board.viewport; }
+      if ($('lightbox').open) $('lightbox').close();
+      render();
+    }
+    if (fresh || state.status !== status) { status = state.status; applyStatus(state); }
+  }
+
+  async function poll() {
+    if (stopped) return;
+    try {
+      const r = await fetch('state', { cache: 'no-store' });
+      if (!r.ok) throw new Error('bad status');
+      const state = await r.json();
+      fails = 0; $('alert').hidden = true;
+      apply(state);
+      if (state.status === 'closed') { stopped = true; return; }
+    } catch {
+      if (++fails >= 4) {
+        $('alert').hidden = false;
+        $('alert').textContent = status === 'closed'
+          ? 'This board is closed. You can close this tab.'
+          : 'The board lost its connection to the agent. Ask the agent to reopen it.';
+        if (fails >= 40) { stopped = true; return; }
+      }
+    }
+    setTimeout(poll, 1500);
+  }
+
+  async function submit(action, optionId) {
+    if (status !== 'open') return;
+    const suggestion = $('suggestion').value.trim();
+    const clean = {};
+    for (const [k, v] of Object.entries(notes)) if (v && v.trim()) clean[k] = v.trim();
+    if (action === 'revise' && !suggestion && !Object.keys(clean).length) {
+      $('dock-msg').textContent = 'Write what should change first, here or as a note on an option.';
+      $('suggestion').focus();
+      return;
+    }
+    const body = { round, action, optionId: optionId || null, suggestion, notes: clean, viewport: vpName };
+    try {
+      const r = await fetch('answer', { method: 'POST', headers: { 'content-type': 'application/json', 'x-design-board': '1' }, body: JSON.stringify(body) });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        $('dock-msg').textContent = j.message || 'Could not send. Try again.';
+        return;
+      }
+      sentAnswer = body; status = 'answered';
+      if ($('lightbox').open) $('lightbox').close();
+      applyStatus({ lastAnswer: body });
+    } catch {
+      $('dock-msg').textContent = 'Could not reach the board server. Try again.';
+    }
+  }
+
+  function openLightbox(i) {
+    lbIndex = (i + board.options.length) % board.options.length;
+    const o = board.options[lbIndex];
+    $('lb-name').textContent = o.name;
+    $('lb-pick').textContent = board.pickLabel;
+    $('lb-pick').disabled = status !== 'open';
+    $('lb-pick').hidden = !!o.reference;
+    const many = board.options.length > 1;
+    $('lb-prev').hidden = !many; $('lb-next').hidden = !many;
+    const host = $('lb-stage');
+    if (lbObserver) { lbObserver.disconnect(); lbObserver = null; }
+    host.replaceChildren();
+    const stage = frameFor(o, 32);
+    host.append(stage);
+    if (!$('lightbox').open) $('lightbox').showModal();
+    if (stage._fit) {
+      const ro = new ResizeObserver(() => stage._fit());
+      ro.observe(host);
+      lbObserver = ro;
+      stage._fit();
+    }
+  }
+
+  document.querySelectorAll('[data-vp]').forEach((b) => b.addEventListener('click', () => {
+    if (!board) return;
+    vpName = b.dataset.vp; vp = VIEWPORTS[vpName];
+    const keep = $('suggestion').value;
+    render(); applyStatus({});
+    $('suggestion').value = keep;
+  }));
+  $('send').addEventListener('click', () => submit('revise'));
+  $('reroll').addEventListener('click', () => submit('reroll'));
+  $('suggestion').addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit('revise'); });
+  $('lb-close').addEventListener('click', () => $('lightbox').close());
+  $('lb-prev').addEventListener('click', () => openLightbox(lbIndex - 1));
+  $('lb-next').addEventListener('click', () => openLightbox(lbIndex + 1));
+  $('lb-pick').addEventListener('click', () => submit('pick', board.options[lbIndex].id));
+  $('lightbox').addEventListener('close', () => { if (lbObserver) { lbObserver.disconnect(); lbObserver = null; } $('lb-stage').replaceChildren(); });
+  $('lightbox').addEventListener('keydown', (e) => {
+    if (e.target.closest('textarea')) return;
+    if (e.key === 'ArrowLeft') openLightbox(lbIndex - 1);
+    if (e.key === 'ArrowRight') openLightbox(lbIndex + 1);
+  });
+
+  poll();
+})();
+</script>
+</body>
+</html>
